@@ -7,6 +7,8 @@ from PIL import Image
 import numpy as np
 import io
 
+from utils.validate_password import validate_password
+
 from models import User
 from routes import mailer
 
@@ -97,22 +99,29 @@ def login():
 
 
 # -------------------------
-# REMOVE BACKGROUND FUNCTION
+# REMOVE LIGHT BACKGROUND (RGB > 200)
 # -------------------------
-from rembg import remove
 from PIL import Image
 import io
 
 def remove_background(image_file):
-    # Read input image
-    input_image = Image.open(image_file).convert("RGBA")
 
-    # Remove background using AI model
-    output_image = remove(input_image)
+    image = Image.open(image_file).convert("RGBA")
+    datas = image.getdata()
 
-    # Save to memory
+    new_data = []
+    for item in datas:
+        r, g, b, a = item
+
+        if r > 200 and g > 200 and b > 200:
+            new_data.append((255, 255, 255, 0))  # Transparent
+        else:
+            new_data.append((r, g, b, a))  # Keep original
+
+    image.putdata(new_data)
+
     output_buffer = io.BytesIO()
-    output_image.save(output_buffer, format="PNG")
+    image.save(output_buffer, format="PNG")
     output_buffer.seek(0)
 
     return output_buffer
@@ -169,7 +178,14 @@ def create_account():
     if not username or not password or not role:
         flash("All required fields must be filled.", "danger")
         return redirect(url_for("auth.register_page"))
+    # ===============================
+    # Password Validation (NEW)
+    # ===============================
+    errors = validate_password(password)
 
+    if errors:
+        flash("Password must contain:\n" + "\n".join(errors), "danger")
+        return redirect(url_for("auth.register_page"))
     # ===============================
     # Signature Handling (Upload OR Draw)
     # ===============================
@@ -289,14 +305,24 @@ def logout():
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])
+@login_required
 def change_password():
     if request.method == "POST":
         current_pw = request.form.get("current_password")
         new_pw = request.form.get("new_password")
 
         if not current_user.check_password(current_pw):
-            flash("Current password incorrect","danger")
+            flash("Current password incorrect", "danger")
+            return redirect(url_for("dashboard.index"))
 
+        errors = validate_password(new_pw)
+
+        if errors:
+            flash("Password must contain:\n" + "\n".join(errors), "danger")
+            return redirect(url_for("dashboard.index"))
+
+        if current_user.check_password(new_pw):
+            flash("New password cannot be the same as the old password", "danger")
             return redirect(url_for("dashboard.index"))
 
         current_user.set_password(new_pw)
@@ -317,10 +343,9 @@ def change_password():
             subject,
             body,
             "#0dcaf0"
-)
+        )
 
-        flash("Password updated successfully","success")
+        flash("Password updated successfully", "success")
         return redirect(url_for("dashboard.index"))
-    
-    # GET method → render a form
+
     return render_template("change_password.html")
