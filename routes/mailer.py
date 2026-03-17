@@ -57,7 +57,7 @@ def send_final_clearance_mail(username, rec_email, subject, body, body_color):
         print(f"[STEP] Email sent successfully.")
 
         print(f"[STEP] Connecting to SMTP server {SMTP_SERVER}:{SMTP_PORT}...")
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT,timeout=10) as server:
             print(f"[STEP] Starting TLS...")
             server.starttls()
             print(f"[STEP] Logging in as {SENDER_EMAIL}...")
@@ -151,7 +151,7 @@ def send_mail_with_attachment(username, rec_email, subject, body, body_color, at
             print("[MAIL] Attachment not found!")
 
         # Send Email
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT,timeout=10) as server:
             server.starttls()
             server.login(SENDER_EMAIL, APP_PASSWORD)
             server.send_message(msg)
@@ -212,7 +212,7 @@ def send_finance_forms_mail(username, rec_email, subject, body, body_color,
             )
 
         # SEND
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT,timeout=10) as server:
             server.starttls()
             server.login(SENDER_EMAIL, APP_PASSWORD)
             server.send_message(msg)
