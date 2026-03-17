@@ -4,6 +4,7 @@ from datetime import datetime
 from num2words import num2words
 from models import User
 from routes import reimb_pdf,perdiem_pdf,mailer
+from utils.receipt_similarity import text_similarity
 import random
 from extensions import db
 from models import (
@@ -260,6 +261,8 @@ def requestor():
             else:
                 receipt_map = {}
 
+            import hashlib
+
             for field, category in receipt_map.items():
                 for f in request.files.getlist(field):
                     if not f or not f.filename:
@@ -275,13 +278,40 @@ def requestor():
                     if size > MAX_RECEIPT_SIZES[category]:
                         raise ValueError(f"{category.replace('_',' ').title()} exceeds 3 MB")
 
+                    file_bytes = f.read()
+
+                    # CREATE HASH
+                    file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+                    # CHECK DUPLICATE
+                    existing_receipt = Receipt.query.filter_by(
+                        file_hash=file_hash
+                    ).first()
+
+                    if existing_receipt:
+
+                        # SAME CATEGORY
+                        if existing_receipt.category == category:
+                            raise ValueError(
+                                f"This {category.replace('_',' ')} receipt has already been uploaded."
+                            )
+
+                        # DIFFERENT CATEGORY
+                        else:
+                            raise ValueError(
+                                f"This receipt was already uploaded under "
+                                f"'{existing_receipt.category.replace('_',' ')}'. "
+                                f"A receipt cannot be used in multiple categories."
+                            )
+
                     db.session.add(
                         Receipt(
                             request_id=perdiem.id,
                             mode=submit_mode,
                             category=category,
-                            file_data=f.read(),
+                            file_data=file_bytes,
                             file_mime=f.mimetype,
+                            file_hash=file_hash,   # SAVE HASH
                             uploaded_at=datetime.utcnow()
                         )
                     )
@@ -319,7 +349,30 @@ def requestor():
                     )
 
                     receipt.ocr_text = extracted_text
-     
+                  
+                    
+
+                    receipts = Receipt.query.filter_by(request_id=perdiem.id).all()
+
+                    for i in range(len(receipts)):
+                        for j in range(i + 1, len(receipts)):
+
+                            r1 = receipts[i]
+                            r2 = receipts[j]
+
+                            if not r1.ocr_text or not r2.ocr_text:
+                                continue
+
+                            similarity = text_similarity(r1.ocr_text, r2.ocr_text)
+
+                            print(f"OCR similarity {r1.id} vs {r2.id}: {similarity}")
+
+                            if similarity >= 0.85:
+                                raise ValueError(
+                                    f"Duplicate receipt detected between "
+                                    f"{r1.category} and {r2.category} (similarity {round(similarity*100)}%)."
+                                )
+                        
 
                     os.remove(temp_path)
 
